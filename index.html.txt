@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EcoMarine-SOS</title>
+    <!-- Leaflet CSS for the Free Map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
+        body { background-color: #f4f6f9; color: #333; }
+        header { background-color: #1a365d; color: white; padding: 1rem; text-align: center; }
+        .container { display: flex; flex-wrap: wrap; gap: 20px; padding: 20px; max-width: 1400px; margin: 0 auto; }
+        .panel { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); flex: 1; min-width: 320px; }
+        h2 { margin-bottom: 15px; color: #2c5282; border-bottom: 2px solid #e2e8f0; padding-bottom: 5px; }
+        .sos-btn { background-color: #e53e3e; color: white; border: none; width: 100%; padding: 30px; font-size: 1.5rem; font-weight: bold; border-radius: 12px; cursor: pointer; box-shadow: 0 4px 10px rgba(229, 62, 62, 0.4); }
+        .sos-btn:active { transform: scale(0.98); background-color: #c53030; }
+        .status-msg { margin-top: 15px; font-weight: 500; text-align: center; color: #4a5568; }
+        #map { width: 100%; height: 450px; border-radius: 6px; border: 1px solid #cbd5e0; }
+        @media (max-width: 768px) { .container { flex-direction: column; } }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>⚓ EcoMarine-SOS Command Center</h1>
+    </header>
+
+    <main class="container">
+        <!-- VESSEL INTERFACE -->
+        <section class="panel vessel-panel">
+            <h2>Vessel Distress Panel</h2>
+            <p style="margin-bottom: 15px;">Tap the button below to send your real-time GPS coordinates to authorities.</p>
+            <button id="sosButton" class="sos-btn">🚨 SEND SOS</button>
+            <div id="vesselStatus" class="status-msg">System ready.</div>
+        </section>
+
+        <!-- ONSHORE RESCUE DASHBOARD -->
+        <section class="panel map-panel">
+            <h2>Live Emergency Rescue Map</h2>
+            <div id="map"></div>
+        </section>
+    </main>
+
+    <!-- Leaflet JS for Free Mapping Layer -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- MQTT.js library over free CDN for Lightweight communication -->
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script>
+        // --- CONFIGURATION ---
+        const MQTT_BROKER = "wss://broker.hivemq.com:8000/mqtt"; 
+        const MQTT_TOPIC = "cih2026/maritime/emergency/alerts";
+
+        // --- INITIALIZE MAP (OpenStreetMap - 100% Free) ---
+        const map = L.map('map').setView([12.8660, 74.9252], 11);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        let alertMarkers = {};
+
+        // --- CONNECT TO FREE COMMUNICATION PIPELINE ---
+        const client = mqtt.connect(MQTT_BROKER);
+
+        client.on('connect', () => {
+            console.log("Connected to Free Network Broker Pipeline Successfully.");
+            client.subscribe(MQTT_TOPIC);
+        });
+
+        client.on('message', (topic, message) => {
+            try {
+                const data = JSON.parse(message.toString());
+                
+                if (alertMarkers[data.id]) {
+                    map.removeLayer(alertMarkers[data.id]);
+                }
+
+                const marker = L.marker([data.lat, data.lng]).addTo(map)
+                    .bindPopup(`<b>🚨 EMERGENCY DISTRESS</b><br>Vessel: ${data.id}<br>Lat: ${data.lat}<br>Lng: ${data.lng}`)
+                    .openPopup();
+                    
+                alertMarkers[data.id] = marker;
+                map.setView([data.lat, data.lng], 13); 
+            } catch (e) {
+                console.error("Error parsing message packets", e);
+            }
+        });
+
+        // --- HANDLE TRIGGER SOS BUTTON ---
+        document.getElementById('sosButton').addEventListener('click', () => {
+            const statusDiv = document.getElementById('vesselStatus');
+            statusDiv.innerText = "Fetching precise GPS coordinates...";
+            statusDiv.style.color = "#d69e2e";
+
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const payload = {
+                            id: "Vessel-Aysha-Aniq", // Unique demo handle
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude,
+                            timestamp: new Date().toISOString()
+                        };
+
+                        client.publish(MQTT_TOPIC, JSON.stringify(payload));
+                        
+                        statusDiv.innerText = `🚨 Alert Dispatched! Coords: ${payload.lat.toFixed(4)}, ${payload.lng.toFixed(4)}`;
+                        statusDiv.style.color = "#38a169";
+                    },
+                    (error) => {
+                        statusDiv.innerText = "Error reading GPS. Ensure location access is enabled.";
+                        statusDiv.style.color = "#e53e3e";
+                    },
+                    { enableHighAccuracy: true }
+                );
+            } else {
+                statusDiv.innerText = "Browser environment does not support GPS features.";
+                statusDiv.style.color = "#e53e3e";
+            }
+        });
+    </script>
+</body>
+</html>
